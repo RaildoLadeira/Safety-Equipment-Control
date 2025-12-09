@@ -9,10 +9,8 @@ namespace Safety_Equipment_Control
 {
     public partial class Form1 : Form
     {
-        // Search Placeholder Constant
         const string SEARCH_PLACEHOLDER = "🔍 Search...";
 
-        // Material Duration Dictionary (Months)
         Dictionary<string, int> materialDurations = new Dictionary<string, int>()
         {
             { "Safety Shoes", 7 }, { "Hard Hat", 6 }, { "Vest", 6 },
@@ -22,23 +20,42 @@ namespace Safety_Equipment_Control
         public Form1()
         {
             InitializeComponent();
-            ConfigureForm();        // Grid Layout & Columns
-            ConfigureExtraEvents(); // Event Wiring
-            ApplyAppleDesign();     // Visuals & Emojis
-            SetupSearchPlaceholder(); // Search Bar Logic
+            ConfigureForm();
+            ConfigureExtraEvents();
+            ApplyAppleDesign();
+            SetupSearchPlaceholder();
+            LoadDataFromDatabase(); // Loads from SQL on startup
         }
 
-        // --- 1. TABLE CONFIGURATION ---
+        // --- DATABASE LOAD ---
+        private void LoadDataFromDatabase()
+        {
+            try
+            {
+                gridDados.Rows.Clear();
+                using (var context = new SafetyContext())
+                {
+                    var list = context.EquipmentInventory.ToList();
+                    foreach (var item in list)
+                    {
+                        var result = CheckStatus(item.Material, item.LastIssueDate, item.FirstDate);
+                        int index = gridDados.Rows.Add(item.Name, item.FirstDate, item.LastIssueDate, item.Material, item.Quantity, result.status, item.Id);
+                        ApplyStatusColor(gridDados.Rows[index], result.color);
+                    }
+                }
+            }
+            catch (Exception ex) { MessageBox.Show("DB Error: " + ex.Message); }
+        }
+
+        // --- CONFIGURATION ---
         private void ConfigureForm()
         {
-            // Setup ComboBox
             cmbMaterial.Items.Clear();
             foreach (var item in materialDurations.Keys) cmbMaterial.Items.Add(item);
             if (cmbMaterial.Items.Count > 0) cmbMaterial.SelectedIndex = 0;
 
-            // Clear and Recreate Columns
             gridDados.Columns.Clear();
-            gridDados.ColumnCount = 6;
+            gridDados.ColumnCount = 7; // 7 Columns (Hidden ID)
 
             gridDados.Columns[0].Name = "Name";
             gridDados.Columns[1].Name = "First Date";
@@ -46,36 +63,12 @@ namespace Safety_Equipment_Control
             gridDados.Columns[3].Name = "Material";
             gridDados.Columns[4].Name = "Quantity";
             gridDados.Columns[5].Name = "Status";
+            gridDados.Columns[6].Name = "Id";
+            gridDados.Columns[6].Visible = false; // Hide ID
 
-            // --- ALIGNMENT & FORMATTING ---
-
-            // Center Alignment
-            gridDados.Columns[1].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            gridDados.Columns[2].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            gridDados.Columns[4].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            gridDados.Columns[5].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-
-            // Date Format (dd/MM/yyyy)
             gridDados.Columns[1].DefaultCellStyle.Format = "dd/MM/yyyy";
             gridDados.Columns[2].DefaultCellStyle.Format = "dd/MM/yyyy";
-
-            // Header Alignment
-            gridDados.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            gridDados.Columns[0].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleLeft;
-            gridDados.Columns[3].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleLeft;
-
-            // --- COLUMN SIZING ---
             gridDados.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-
-            // Wider columns
-            gridDados.Columns[0].FillWeight = 150; // Name
-            gridDados.Columns[3].FillWeight = 120; // Material
-
-            // Compact column
-            gridDados.Columns[4].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-            gridDados.Columns[4].Width = 80; // Quantity
-
-            // General Settings
             gridDados.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             gridDados.ReadOnly = true;
             gridDados.AllowUserToAddRows = false;
@@ -84,312 +77,167 @@ namespace Safety_Equipment_Control
 
         private void ConfigureExtraEvents()
         {
-            // Search Bar Wiring
-            Control[] searchControls = this.Controls.Find("textSearch", true);
-            if (searchControls.Length > 0)
+            btnAdd.Click -= btnAdd_Click; btnAdd.Click += btnAdd_Click;
+            btnUpdate.Click -= btnUpdate_Click; btnUpdate.Click += btnUpdate_Click;
+            btnDelete.Click -= btnDelete_Click; btnDelete.Click += btnDelete_Click;
+            btnLoad.Click -= btnLoad_Click; btnLoad.Click += btnLoad_Click;
+            btnSave.Click -= btnSave_Click; btnSave.Click += btnSave_Click;
+
+            Control[] s = this.Controls.Find("textSearch", true);
+            if (s.Length > 0)
             {
-                TextBox txt = (TextBox)searchControls[0];
-                txt.TextChanged -= textSearch_TextChanged;
-                txt.TextChanged += textSearch_TextChanged;
+                TextBox t = (TextBox)s[0];
+                t.TextChanged -= textSearch_TextChanged;
+                t.TextChanged += textSearch_TextChanged;
             }
-            // Quantity Validation Wiring
             textQuantity.KeyPress -= textQuantity_KeyPress;
             textQuantity.KeyPress += textQuantity_KeyPress;
-
-            // Button Wiring (Safety check)
-            btnUpdate.Click -= btnUpdate_Click;
-            btnUpdate.Click += btnUpdate_Click;
         }
 
-        // --- 2. SEARCH PLACEHOLDER LOGIC ---
-        private void SetupSearchPlaceholder()
-        {
-            Control[] searchControls = this.Controls.Find("textSearch", true);
-            if (searchControls.Length > 0)
-            {
-                TextBox txt = (TextBox)searchControls[0];
-                txt.Text = SEARCH_PLACEHOLDER;
-                txt.ForeColor = Color.Gray;
-
-                txt.Enter += (s, e) => {
-                    if (txt.Text == SEARCH_PLACEHOLDER)
-                    {
-                        txt.Text = "";
-                        txt.ForeColor = Color.Black;
-                    }
-                };
-
-                txt.Leave += (s, e) => {
-                    if (string.IsNullOrWhiteSpace(txt.Text))
-                    {
-                        txt.Text = SEARCH_PLACEHOLDER;
-                        txt.ForeColor = Color.Gray;
-                    }
-                };
-            }
-        }
-
-        // --- 3. BUSINESS LOGIC ---
-        private (string status, Color color) CheckStatus(string material, DateTime requestDate, DateTime firstDate)
-        {
-            int durationMonths = 6;
-            if (materialDurations.ContainsKey(material)) durationMonths = materialDurations[material];
-
-            DateTime expirationDate = firstDate.AddMonths(durationMonths);
-
-            // Apple Red / Apple Green
-            if (requestDate < expirationDate)
-                return ("Not Good", Color.FromArgb(255, 59, 48));
-            else
-                return ("Good", Color.FromArgb(40, 205, 65));
-        }
-
-        // --- 4. EVENTS ---
-        private void textQuantity_KeyPress(object sender, KeyPressEventArgs e)
-        {
-            if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
-        }
-
-        private void textSearch_TextChanged(object sender, EventArgs e)
-        {
-            TextBox txt = sender as TextBox;
-            if (txt == null) return;
-
-            // Ignore placeholder
-            if (txt.Text == SEARCH_PLACEHOLDER) return;
-
-            string term = txt.Text.ToLower();
-
-            foreach (DataGridViewRow row in gridDados.Rows)
-            {
-                string name = row.Cells[0].Value?.ToString().ToLower() ?? "";
-                string material = row.Cells[3].Value?.ToString().ToLower() ?? "";
-                try { row.Visible = name.Contains(term) || material.Contains(term); } catch { }
-            }
-        }
-
-        // --- 5. BUTTONS ---
-
+        // --- BUTTONS ---
         private void btnAdd_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(textName.Text) || string.IsNullOrWhiteSpace(textQuantity.Text))
+            if (string.IsNullOrWhiteSpace(textName.Text)) return;
+            try
             {
-                MessageBox.Show("Please fill all fields.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                using (var context = new SafetyContext())
+                {
+                    var item = new EquipmentItem()
+                    {
+                        Name = textName.Text,
+                        FirstDate = dtpFirstDate.Value,
+                        LastIssueDate = dtpLastDate.Value,
+                        Material = cmbMaterial.Text,
+                        Quantity = int.Parse(textQuantity.Text),
+                        Status = CheckStatus(cmbMaterial.Text, dtpLastDate.Value, dtpFirstDate.Value).status
+                    };
+                    context.EquipmentInventory.Add(item);
+                    context.SaveChanges();
+                }
+                LoadDataFromDatabase();
+                ClearFields();
             }
-
-            var result = CheckStatus(cmbMaterial.Text, dtpLastDate.Value, dtpFirstDate.Value);
-
-            int index = gridDados.Rows.Add(
-                textName.Text,
-                dtpFirstDate.Value,
-                dtpLastDate.Value,
-                cmbMaterial.Text,
-                textQuantity.Text,
-                result.status
-            );
-
-            ApplyStatusColor(gridDados.Rows[index], result.color);
-            ClearFields();
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void btnUpdate_Click(object sender, EventArgs e)
         {
-            if (gridDados.SelectedRows.Count > 0)
+            if (gridDados.SelectedRows.Count == 0) return;
+            try
             {
-                DataGridViewRow row = gridDados.SelectedRows[0];
-
-                // Update Columns Manually
-                row.Cells[0].Value = textName.Text;
-                row.Cells[1].Value = dtpFirstDate.Value.ToShortDateString();
-                row.Cells[2].Value = dtpLastDate.Value.ToShortDateString();
-                row.Cells[3].Value = cmbMaterial.Text;
-                row.Cells[4].Value = textQuantity.Text;
-
-                // Recalculate
-                var result = CheckStatus(cmbMaterial.Text, dtpLastDate.Value, dtpFirstDate.Value);
-                row.Cells[5].Value = result.status;
-
-                ApplyStatusColor(row, result.color);
-
-                MessageBox.Show("Updated!", "Success");
+                int id = Convert.ToInt32(gridDados.SelectedRows[0].Cells[6].Value);
+                using (var context = new SafetyContext())
+                {
+                    var item = context.EquipmentInventory.Find(id);
+                    if (item != null)
+                    {
+                        item.Name = textName.Text; item.FirstDate = dtpFirstDate.Value; item.LastIssueDate = dtpLastDate.Value;
+                        item.Material = cmbMaterial.Text; item.Quantity = int.Parse(textQuantity.Text);
+                        item.Status = CheckStatus(cmbMaterial.Text, dtpLastDate.Value, dtpFirstDate.Value).status;
+                        context.SaveChanges();
+                    }
+                }
+                LoadDataFromDatabase();
                 ClearFields();
             }
-            else
-            {
-                MessageBox.Show("Please select a row first", "Warning");
-            }
+            catch (Exception ex) { MessageBox.Show(ex.Message); }
         }
 
         private void btnDelete_Click(object sender, EventArgs e)
         {
-            if (gridDados.SelectedRows.Count > 0)
+            if (gridDados.SelectedRows.Count == 0) return;
+            if (MessageBox.Show("Delete?", "Confirm", MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
-                if (MessageBox.Show("Delete item?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                try
                 {
-                    foreach (DataGridViewRow row in gridDados.SelectedRows) gridDados.Rows.Remove(row);
-                }
-            }
-        }
-
-        private void btnSave_Click(object sender, EventArgs e)
-        {
-            try
-            {
-                using (StreamWriter sw = new StreamWriter("safety_data.csv"))
-                {
-                    sw.WriteLine("Name,First,Last,Mat,Qty,Status");
-                    foreach (DataGridViewRow r in gridDados.Rows)
+                    int id = Convert.ToInt32(gridDados.SelectedRows[0].Cells[6].Value);
+                    using (var context = new SafetyContext())
                     {
-                        if (r.Visible && !r.IsNewRow)
-                        {
-                            string d1 = DateTime.Parse(r.Cells[1].Value.ToString()).ToShortDateString();
-                            string d2 = DateTime.Parse(r.Cells[2].Value.ToString()).ToShortDateString();
-                            sw.WriteLine($"{r.Cells[0].Value},{d1},{d2},{r.Cells[3].Value},{r.Cells[4].Value},{r.Cells[5].Value}");
-                        }
+                        var item = context.EquipmentInventory.Find(id);
+                        if (item != null) { context.EquipmentInventory.Remove(item); context.SaveChanges(); }
                     }
+                    LoadDataFromDatabase();
                 }
-                MessageBox.Show("Saved!", "Success");
+                catch (Exception ex) { MessageBox.Show(ex.Message); }
             }
-            catch (Exception ex) { MessageBox.Show("Error: " + ex.Message); }
         }
 
-        private void btnLoad_Click(object sender, EventArgs e)
+        private void btnLoad_Click(object sender, EventArgs e) { LoadDataFromDatabase(); }
+
+        private void btnSave_Click(object sender, EventArgs e) { MessageBox.Show("Data is auto-saved to SQL Database!", "Info"); }
+
+        // --- LOGIC ---
+        private (string status, Color color) CheckStatus(string material, DateTime requestDate, DateTime firstDate)
         {
-            using (OpenFileDialog ofd = new OpenFileDialog { Filter = "CSV|*.csv" })
-            {
-                if (ofd.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        gridDados.Rows.Clear();
-                        foreach (string line in File.ReadAllLines(ofd.FileName).Skip(1))
-                        {
-                            string[] d = line.Split(',');
-                            if (d.Length >= 6)
-                            {
-                                DateTime dt1 = DateTime.Parse(d[1]);
-                                DateTime dt2 = DateTime.Parse(d[2]);
-                                var res = CheckStatus(d[3], dt2, dt1);
+            int duration = 6;
+            if (materialDurations.ContainsKey(material)) duration = materialDurations[material];
+            if (requestDate < firstDate.AddMonths(duration)) return ("Not Good", Color.FromArgb(255, 59, 48));
+            else return ("Good", Color.FromArgb(40, 205, 65));
+        }
 
-                                int i = gridDados.Rows.Add(d[0], dt1, dt2, d[3], d[4], res.status);
-                                ApplyStatusColor(gridDados.Rows[i], res.color);
-                            }
-                        }
-                        MessageBox.Show("Loaded!", "Success");
-                    }
-                    catch (Exception ex) { MessageBox.Show("Error: " + ex.Message); }
-                }
+        private void SetupSearchPlaceholder()
+        {
+            Control[] s = this.Controls.Find("textSearch", true);
+            if (s.Length > 0)
+            {
+                TextBox t = (TextBox)s[0]; t.Text = SEARCH_PLACEHOLDER; t.ForeColor = Color.Gray;
+                t.Enter += (sender, e) => { if (t.Text == SEARCH_PLACEHOLDER) { t.Text = ""; t.ForeColor = Color.Black; } };
+                t.Leave += (sender, e) => { if (string.IsNullOrWhiteSpace(t.Text)) { t.Text = SEARCH_PLACEHOLDER; t.ForeColor = Color.Gray; } };
             }
         }
 
+        private void textSearch_TextChanged(object sender, EventArgs e)
+        {
+            TextBox t = sender as TextBox; if (t == null || t.Text == SEARCH_PLACEHOLDER) return;
+            foreach (DataGridViewRow r in gridDados.Rows)
+            {
+                string n = r.Cells[0].Value?.ToString().ToLower() ?? "";
+                string m = r.Cells[3].Value?.ToString().ToLower() ?? "";
+                try { r.Visible = n.Contains(t.Text.ToLower()) || m.Contains(t.Text.ToLower()); } catch { }
+            }
+        }
+
+        private void textQuantity_KeyPress(object sender, KeyPressEventArgs e) { if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true; }
         private void gridDados_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex >= 0)
             {
-                var c = gridDados.Rows[e.RowIndex].Cells;
-                textName.Text = c[0].Value.ToString();
-                dtpFirstDate.Value = DateTime.Parse(c[1].Value.ToString());
-                dtpLastDate.Value = DateTime.Parse(c[2].Value.ToString());
-                cmbMaterial.Text = c[3].Value.ToString();
-                textQuantity.Text = c[4].Value.ToString();
+                textName.Text = gridDados.Rows[e.RowIndex].Cells[0].Value.ToString();
+                dtpFirstDate.Value = (DateTime)gridDados.Rows[e.RowIndex].Cells[1].Value;
+                dtpLastDate.Value = (DateTime)gridDados.Rows[e.RowIndex].Cells[2].Value;
+                cmbMaterial.Text = gridDados.Rows[e.RowIndex].Cells[3].Value.ToString();
+                textQuantity.Text = gridDados.Rows[e.RowIndex].Cells[4].Value.ToString();
             }
         }
-
         private void ClearFields() { textName.Clear(); textQuantity.Clear(); textName.Focus(); }
+        private void ApplyStatusColor(DataGridViewRow row, Color c) { row.Cells[5].Style.ForeColor = c; row.Cells[5].Style.SelectionForeColor = c; }
 
-        // --- HELPER: APPLY STATUS COLOR ---
-        private void ApplyStatusColor(DataGridViewRow row, Color color)
-        {
-            row.Cells[5].Style.ForeColor = color;
-            row.Cells[5].Style.SelectionForeColor = color;
-        }
-
-        // ==================================================================================
-        // --- 6. APPLE DESIGN (VISUALS) ---
-        // ==================================================================================
         private void ApplyAppleDesign()
         {
-            this.BackColor = Color.White;
-            this.Font = new Font("Segoe UI", 10, FontStyle.Regular);
-
-            // Grid Style
-            gridDados.BackgroundColor = Color.White;
-            gridDados.BorderStyle = BorderStyle.None;
-            gridDados.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-            gridDados.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
-            gridDados.EnableHeadersVisualStyles = false;
-            gridDados.RowHeadersVisible = false;
-
-            // Headers
+            this.BackColor = Color.White; this.Font = new Font("Segoe UI", 10);
+            gridDados.BackgroundColor = Color.White; gridDados.BorderStyle = BorderStyle.None;
             gridDados.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(242, 242, 247);
-            gridDados.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(60, 60, 60);
-            gridDados.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9, FontStyle.Bold);
-            gridDados.ColumnHeadersHeight = 40;
-
-            // Rows
-            gridDados.DefaultCellStyle.BackColor = Color.White;
-            gridDados.DefaultCellStyle.ForeColor = Color.Black;
-            gridDados.RowTemplate.Height = 35;
-            gridDados.GridColor = Color.FromArgb(230, 230, 230);
-
-            // Soft Selection
             gridDados.DefaultCellStyle.SelectionBackColor = Color.FromArgb(235, 235, 240);
             gridDados.DefaultCellStyle.SelectionForeColor = Color.Black;
-
-            // Anchors (Fixes Maximizing)
             gridDados.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
-            // Fix Search Bar
             Control[] s = this.Controls.Find("textSearch", true);
-            if (s.Length > 0)
-            {
-                s[0].Width = 300;
-                s[0].Anchor = AnchorStyles.Top | AnchorStyles.Left;
-            }
+            if (s.Length > 0) { s[0].Width = 300; s[0].Anchor = AnchorStyles.Top | AnchorStyles.Left; }
 
-            // --- BUTTONS WITH EMOJIS ---
-            btnAdd.Text = "➕  Add";
-            StyleAppleButton(btnAdd, Color.FromArgb(0, 122, 255)); // Blue
+            StyleBtn(btnAdd, Color.FromArgb(0, 122, 255)); StyleBtn(btnUpdate, Color.FromArgb(88, 86, 214));
+            StyleBtn(btnDelete, Color.FromArgb(255, 59, 48)); StyleBtn(btnSave, Color.FromArgb(52, 199, 89));
+            StyleBtn(btnLoad, Color.FromArgb(142, 142, 147));
 
-            btnUpdate.Text = "✏️  Update";
-            StyleAppleButton(btnUpdate, Color.FromArgb(88, 86, 214)); // Purple
-
-            btnDelete.Text = "🗑️  Delete";
-            StyleAppleButton(btnDelete, Color.FromArgb(255, 59, 48)); // Red
-
-            btnSave.Text = "💾  Save";
-            StyleAppleButton(btnSave, Color.FromArgb(52, 199, 89)); // Green
-
-            btnLoad.Text = "📂  Load";
-            StyleAppleButton(btnLoad, Color.FromArgb(142, 142, 147)); // Gray
-
-            // Button Anchors (Right Aligned)
-            btnAdd.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnUpdate.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnDelete.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnSave.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnAdd.Anchor = AnchorStyles.Top | AnchorStyles.Right; btnUpdate.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnDelete.Anchor = AnchorStyles.Top | AnchorStyles.Right; btnSave.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnLoad.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
-            // INPUTS
             foreach (Control c in this.Controls)
             {
-                if (c is Label l) { l.ForeColor = Color.Black; l.Font = new Font("Segoe UI", 9, FontStyle.Bold); }
-                else if (c is TextBox t) { t.BackColor = Color.FromArgb(242, 242, 247); t.BorderStyle = BorderStyle.FixedSingle; }
+                if (c is TextBox t) { t.BackColor = Color.FromArgb(242, 242, 247); t.BorderStyle = BorderStyle.FixedSingle; }
                 else if (c is ComboBox cb) { cb.FlatStyle = FlatStyle.Flat; cb.BackColor = Color.FromArgb(242, 242, 247); }
-                else if (c is DateTimePicker dtp) { dtp.Format = DateTimePickerFormat.Short; }
             }
         }
-
-        private void StyleAppleButton(Button btn, Color color)
-        {
-            if (btn == null) return;
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.FlatAppearance.BorderSize = 0;
-            btn.BackColor = color;
-            btn.ForeColor = Color.White;
-            btn.Font = new Font("Segoe UI", 10, FontStyle.Bold);
-            btn.Cursor = Cursors.Hand;
-        }
+        private void StyleBtn(Button b, Color c) { b.FlatStyle = FlatStyle.Flat; b.FlatAppearance.BorderSize = 0; b.BackColor = c; b.ForeColor = Color.White; b.Font = new Font("Segoe UI", 9, FontStyle.Bold); b.Cursor = Cursors.Hand; }
     }
 }
