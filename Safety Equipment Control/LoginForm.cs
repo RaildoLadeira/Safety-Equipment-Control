@@ -95,7 +95,7 @@ namespace Safety_Equipment_Control
             if (titles.Length > 0)
             {
                 Label title = (Label)titles[0];
-                title.Text = "Safety Equipament Control";
+                title.Text = "Safety Equipment Control";
                 title.ForeColor = Color.Black;
                 title.Font = new Font("Segoe UI", 16, FontStyle.Bold);
                 title.AutoSize = false;
